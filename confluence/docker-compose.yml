@@ -1,0 +1,74 @@
+version: "3.8"
+services:
+  postgres:
+    image: postgres:11-alpine
+    container_name: ${SUB_DOMAIN}-postgres
+    environment:
+      - POSTGRES_PASSWORD=${PASSWORD_DB}
+      - POSTGRES_USER=${USER_DB}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    networks:
+      - ${SUB_DOMAIN}-network
+
+  confluence-server:
+    image: atlassian/confluence
+    container_name: ${SUB_DOMAIN}-server
+    environment:
+      # Memory / Heap Size
+      - JVM_MINIMUM_MEMORY=1024M
+      - JVM_MAXIMUM_MEMORY=2048M
+      - JVM_RESERVED_CODE_CACHE_SIZE=512M
+      # Reverse Proxy Settings
+      - ATL_PROXY_NAME=${SUB_DOMAIN}.${DOMAIN}
+      - ATL_PROXY_PORT=443
+      - ATL_TOMCAT_SCHEME=https
+      - ATL_TOMCAT_SECURE=true
+      # Database
+      - ATL_JDBC_URL=jdbc:postgresql://${SUB_DOMAIN}-postgres:5432/${USER_DB}
+      - ATL_JDBC_USER=${USER_DB}
+      - ATL_JDBC_PASSWORD=${PASSWORD_DB}
+      - ATL_DB_TYPE=postgresql
+      # Data Center configuration
+      - ATL_CLUSTER_TYPE=multicast
+      - ATL_CLUSTER_NAME=confluence-cluster
+      - ATL_CLUSTER_ADDRESS=230.0.0.1
+      - ATL_CLUSTER_TTL=32
+      # Home Directories
+      - CONFLUENCE_HOME=/opt/confluence-home
+      - ATL_PRODUCT_HOME_SHARED=/opt/confluence-home-shared
+    volumes:
+      - type: bind
+        source: ./confluence/home
+        target: /opt/confluence-home
+      - type: bind
+        source: ./confluence/home-shared
+        target: /opt/confluence-home-shared
+    volumes:
+      - ./confluence/home:/opt/confluence-home
+      - ./confluence/shared:/opt/confluence-home-shared
+    command: sh -c "/opt/atlassian/confluence/bin/start-confluence.sh -fg"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-proxy
+      - traefik.http.routers.${SUB_DOMAIN}.rule=Host(`${SUB_DOMAIN}.${DOMAIN}`)
+      - traefik.http.routers.${SUB_DOMAIN}.entrypoints=websecure
+      - traefik.http.routers.${SUB_DOMAIN}.tls=true
+      - traefik.http.routers.${SUB_DOMAIN}.tls.certresolver=letsencrypt
+      - traefik.http.services.${SUB_DOMAIN}.loadbalancer.server.port=8090
+    depends_on:
+      - ${SUB_DOMAIN}-postgres
+    networks:
+      - ${SUB_DOMAIN}-network
+      - traefik-proxy
+
+networks:
+  confluence-network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.enable_ipv6: "false"
+      com.docker.network.bridge.name: "confluence"
+  traefik-proxy:
+    driver: bridge
+    name: traefik-proxy

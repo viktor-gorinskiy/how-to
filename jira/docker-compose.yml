@@ -1,0 +1,49 @@
+version: '3.9'
+
+services:
+
+  postgres:
+    container_name: ${SUB_DOMAIN}-postgres
+    image: postgres:10-alpine
+    # image: postgres:9.6.24-bullseye
+    volumes:
+      - ./pg-var:/var/lib/postgresql/data
+    restart: on-failure
+    networks:
+      - jira-network
+
+  jira-server:
+    container_name: ${SUB_DOMAIN}-server
+    image: ubuntu:22.04
+    depends_on:
+      - ${SUB_DOMAIN}-postgres
+    environment:
+      TZ: Asia/Novosibirsk
+    volumes:
+      - ./atlassian/:/opt/atlassian
+      - ./atlassian-agent.jar:/opt/atlassian-agent.jar
+      - ./data:/var/atlassian/application-data/jira/
+    restart: on-failure
+    command: sh -c "/opt/atlassian/jira/bin/start-jira.sh -fg"
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-proxy
+      - traefik.http.routers.${SUB_DOMAIN}.rule=Host(`${SUB_DOMAIN}.${DOMAIN}`)
+      - traefik.http.routers.${SUB_DOMAIN}.entrypoints=websecure
+      - traefik.http.routers.${SUB_DOMAIN}.tls=true
+      - traefik.http.routers.${SUB_DOMAIN}.tls.certresolver=letsencrypt
+      - traefik.http.services.${SUB_DOMAIN}.loadbalancer.server.port=8081
+    networks:
+      - traefik-proxy
+      - jira-network
+
+networks:
+  jira-network:
+    name: jira-network
+    driver: bridge
+    driver_opts:
+      com.docker.network.enable_ipv6: "false"
+      com.docker.network.bridge.name: "jira-network"
+  traefik-proxy:
+    driver: bridge
+    name: traefik-proxy

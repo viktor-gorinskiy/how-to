@@ -1,0 +1,84 @@
+---
+version: '3.6'
+services:
+  postgres:
+    container_name: ${SUB_DOMAIN}-postgres
+    image: postgres:12-alpine
+    env_file: ./.env
+    volumes:
+      - ./postgres:/var/lib/postgresql/data:Z
+    restart: on-failure
+    networks:
+      - gitlab
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASS}
+      - POSTGRES_HOST_AUTH_METHOD=trust
+      - POSTGRES_HOST=${SUB_DOMAIN}-postgres
+
+  redis:
+    container_name: ${SUB_DOMAIN}-redis
+    restart: on-failure
+    image: redis:3.0.7-alpine
+    networks:
+      - gitlab
+
+  gitlab:
+    container_name: ${SUB_DOMAIN}-server
+    image:  gitlab/gitlab-ce:latest
+    env_file: ./.env
+    depends_on:
+      - ${SUB_DOMAIN}-postgres
+      - ${SUB_DOMAIN}-redis
+    restart: always
+    hostname: ${SUB_DOMAIN}.${DOMAIN}
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        postgresql['enable'] = false
+        gitlab_rails['db_username'] = "${DB_USER}"
+        gitlab_rails['db_password'] = "${DB_PASS}"
+        gitlab_rails['db_host'] = "${SUB_DOMAIN}-postgres"
+        gitlab_rails['db_port'] = "5432"
+        gitlab_rails['db_database'] = "${DB_NAME}"
+        gitlab_rails['db_adapter'] = 'postgresql'
+        gitlab_rails['db_encoding'] = 'utf8'
+        #
+        nginx['listen_https'] = false
+        external_url 'https://${SUB_DOMAIN}.${DOMAIN}'
+        nginx['listen_port'] = 80
+        nginx['listen_https'] = false
+        nginx['proxy_set_headers'] = {"X-Forwarded-Proto" => "https","X-Forwarded-Ssl" => "on"}
+        #        nginx['real_ip_trusted_addresses'] = [ '172.17.0.0/24', '172.17.0.1', '2001:0db8::/32' ]
+        nginx['real_ip_header'] = 'X-Real-IP'
+        nginx['real_ip_recursive'] = 'on'
+        #
+        gitlab_rails['time_zone'] = 'Asia/Novosibirsk'
+        #
+        redis['enable'] = false
+        gitlab_rails['redis_host'] = '${SUB_DOMAIN}-redis'
+        gitlab_rails['redis_port'] = '6379'
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-proxy
+      - traefik.http.routers.${SUB_DOMAIN}.rule=Host(`${SUB_DOMAIN}.${DOMAIN}`)
+      - traefik.http.routers.${SUB_DOMAIN}.entrypoints=websecure
+      - traefik.http.routers.${SUB_DOMAIN}.tls=true
+      - traefik.http.routers.${SUB_DOMAIN}.tls.certresolver=letsencrypt
+      - traefik.http.services.${SUB_DOMAIN}.loadbalancer.server.port=80
+    healthcheck: 
+      disable: false 
+    volumes:
+      - ./gitlab/config:/etc/gitlab:Z
+      - ./gitlab/logs:/var/log/gitlab:Z
+      - ./gitlab/data:/var/opt/gitlab:Z
+      - ./certs/ipa/ca.crt:/etc/ssl/certs/ipa.pem:Z
+    networks: 
+      - traefik-proxy 
+      - gitlab 
+
+networks:
+  gitlab: {}
+  traefik-proxy:
+    driver: bridge
+    name: traefik-proxy

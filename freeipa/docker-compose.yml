@@ -1,0 +1,81 @@
+---
+version: '3.6'
+services:
+  freeipa:
+    container_name: freeipa
+    image: freeipa/freeipa-server:fedora-34
+    restart: unless-stopped
+    hostname: ldap.k40lab.com
+    environment:
+      #- IPA_SERVER_IP=65.108.137.167
+      - IPA_SERVER_HOSTNAME=ldap.k40lab.com
+    tty: true
+    stdin_open: true
+    cap_add:
+      - NET_ADMIN
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - ./data:/data
+      - ./httpd:/etc/httpd/conf.d
+      - ./opt:/opt/
+    sysctls:
+      - net.ipv6.conf.lo.disable_ipv6=0
+      - net.ipv6.conf.all.disable_ipv6=0
+    security_opt:
+      - "seccomp:unconfined"
+    command:
+      - -U
+      - --domain=k40lab.com
+      - --realm=k40lab.com
+      - --http-pin=WebAdmin_7722
+      - --dirsrv-pin=WebAdmin_7722
+      - --ds-password=WebAdmin_7722
+      - --admin-password=WebAdmin_7722
+      - --no-host-dns
+      - --no-ui-redirect
+      #- --no-dnssec-validation
+      #- --setup-dns
+      #- --auto-forwarders
+      #- --allow-zone-overlap
+      - --unattended
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-proxy
+      - traefik.http.routers.ldap.rule=Host(`ldap.k40lab.com`)
+      - traefik.http.routers.ldap.entrypoints=websecure
+      - traefik.http.routers.ldap.tls=true
+      - traefik.http.routers.ldap.tls.certresolver=letsencrypt
+      - traefik.http.services.ldap.loadbalancer.server.port=80
+      # - traefik.http.routers.ldap.middlewares=traefik-auth
+      # - traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_PASSWORD_HASH}
+    networks:
+      - traefik-proxy
+      - freeipa-external
+    ports:
+      #- "53:53/udp"
+      #- "53:53"
+      # - "80:80"
+      # - "443:443"
+      - "389:389"
+      - "636:636"
+      #- "88:88"
+      #- "464:464"
+      #- "88:88/udp"
+      #- "464:464/udp"
+      #- "123:123/udp"
+      #- "7389:7389"
+      #- "9443:9443"
+      #- "9444:9444"
+      #- "9445:9445"
+
+networks:
+  freeipa-external:
+    driver: bridge
+    name: freeipa-external
+    driver_opts:
+      com.docker.network.enable_ipv6: "false"
+      com.docker.network.bridge.name: "docker_freeipa"
+  traefik-proxy:
+    driver: bridge
+    name: traefik-proxy
+

@@ -1,0 +1,53 @@
+version: '3.9'
+services:
+  mail: 
+    image: lejmr/iredmail:mysql-latest
+    restart: unless-stopped
+    container_name: ${SUB_DOMAIN}
+    hostname: ${SUB_DOMAIN}
+    domainname: ${DOMAIN}
+    environment: 
+      - DOMAIN=${DOMAIN}
+      - HOSTNAME=${SUB_DOMAIN}
+      - MYSQL_ROOT_PASSWORD=password
+      - SOGO_WORKERS=1
+      - TIMEZONE=Asia/Novosibirsk
+      - POSTMASTER_PASSWORD={PLAIN}password
+      - IREDAPD_PLUGINS=['reject_null_sender', 'reject_sender_login_mismatch', 'greylisting', 'throttle', 'amavisd_wblist', 'sql_alias_access_policy']
+    volumes:
+      - ./iredmail/mysql:/var/lib/mysql 
+      - ./iredmail/vmail:/var/vmail 
+      - ./iredmail/clamav:/var/lib/clamav
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-proxy
+      - traefik.http.routers.iredmail-secure.entrypoints=websecure
+      - traefik.http.routers.iredmail-secure.rule=Host(`${SUB_DOMAIN}.${DOMAIN}`)
+      - traefik.http.routers.${SUB_DOMAIN}.entrypoints=websecure
+      - traefik.http.routers.${SUB_DOMAIN}.tls=true
+      - traefik.http.routers.${SUB_DOMAIN}.tls.certresolver=letsencrypt
+      - traefik.http.services.iredmail-web.loadbalancer.server.port=80
+
+      - traefik.tcp.routers.iredmail-smtp.entrypoints=smtp
+      - traefik.tcp.routers.iredmail-smtp.rule=HostSNI(`${SUB_DOMAIN}.${DOMAIN}`)
+      - traefik.tcp.services.iredmail-smtp.loadbalancer.server.port=25
+
+      - traefik.tcp.services.iredmail-smtps1.loadbalancer.server.port=465
+      - traefik.tcp.services.iredmail-smtps2.loadbalancer.server.port=587
+      - traefik.tcp.services.iredmail-pop1.loadbalancer.server.port=110
+      - traefik.tcp.services.iredmail-pop2.loadbalancer.server.port=995
+      - traefik.tcp.services.iredmail-imap1.loadbalancer.server.port=143
+      - traefik.tcp.services.iredmail-imap2.loadbalancer.server.port=993
+    networks:
+      - ${SUB_DOMAIN}-network
+      - traefik-proxy
+
+networks:
+  mail-network:
+    driver: bridge
+    driver_opts:
+      com.docker.network.enable_ipv6: "false"
+      com.docker.network.bridge.name: "mail"
+  traefik-proxy:
+    driver: bridge
+    name: traefik-proxy

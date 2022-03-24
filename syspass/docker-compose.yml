@@ -1,0 +1,52 @@
+version: '2'
+services:
+  mariadb:
+    container_name: ${SUB_DOMAIN}-mariadb
+    restart: always
+    image: mariadb:latest
+    environment:
+      MARIADB_ROOT_PASSWORD: "Yeisa8iemohxoNgah8roh0tah2ret3"
+      MARIADB_USER: syspass_user_db
+      MARIADB_PASSWORD: "Yeisa8iemohxoNgah8roh0tah2ret3"
+      MARIADB_DATABASE: syspass
+    volumes:
+      - ./mariadb:/var/lib/mysql
+    networks:
+      - ${SUB_DOMAIN}-network
+
+  syspass:
+    container_name: syspass-server
+    image: syspass/syspass
+    restart: always
+    environment:
+      USE_SSL: no
+      #command: sh -c "sleep 30 && sed -i 's|<applicationUrl></applicationUrl>|<applicationUrl>https://${SUB_DOMAIN}.${DOMAIN}</applicationUrl>|' /var/www/html/sysPass/app/config/config.xml"
+    volumes:
+      - ./syspass/config:/var/www/html/sysPass/app/config
+      - ./syspass/backup:/var/www/html/sysPass/app/backup
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-proxy
+      - traefik.http.routers.${SUB_DOMAIN}.rule=Host(`${SUB_DOMAIN}.${DOMAIN}`)
+      - traefik.http.routers.${SUB_DOMAIN}.entrypoints=websecure
+      - traefik.http.routers.${SUB_DOMAIN}.tls=true
+      - traefik.http.routers.${SUB_DOMAIN}.tls.certresolver=letsencrypt
+      - traefik.http.services.${SUB_DOMAIN}.loadbalancer.server.port=80
+    depends_on:
+      - ${SUB_DOMAIN}-mariadb
+    networks:
+      - ${SUB_DOMAIN}-network
+      - traefik-proxy
+
+networks:
+  syspass-network:
+    name: syspass-network
+    driver: bridge
+    driver_opts:
+      com.docker.network.enable_ipv6: "false"
+      com.docker.network.bridge.name: "syspass-network"
+  traefik-proxy:
+    driver: bridge
+    name: traefik-proxy  
+
+
